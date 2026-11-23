@@ -53,6 +53,7 @@ type Av = {
   start_time: string;
   end_time: string;
 };
+type PublicCompany = { id:number; name:string; slug:string; services:Service[]; availability:Av[] };
 type View =
   | "dashboard"
   | "agenda"
@@ -100,8 +101,10 @@ const paths: Record<View, string> = { dashboard: "/app", agenda: "/app/agenda", 
 function App() {
   const authenticated = Boolean(localStorage.getItem("agendapro_session"));
   const location = useLocation();
+  const publicSlug=location.pathname.startsWith('/p/')?decodeURIComponent(location.pathname.slice(3).split('/')[0]):undefined;
   const navigate = useNavigate();
-  const rawView = (Object.entries(paths).find(([, path]) => path === location.pathname)?.[0] as View | undefined) || (authenticated ? "dashboard" : "login");
+  const publicMode=location.pathname.startsWith('/p/');
+  const rawView = publicMode ? "public" : (Object.entries(paths).find(([, path]) => path === location.pathname)?.[0] as View | undefined) || (authenticated ? "dashboard" : "login");
   const view: View = !authenticated && rawView !== "public" ? "login" : rawView;
   const go = (next: View) => navigate(paths[next]);
   const [services, setServices] = useState<Service[]>([]),
@@ -112,6 +115,11 @@ function App() {
     [toast, setToast] = useState("");
   const companyName =
     localStorage.getItem("agendapro_company") || "Minha empresa";
+  const [companySlug,setCompanySlug]=useState(localStorage.getItem("agendapro_slug") || "");
+  const publicUrl=companySlug ? `${window.location.origin}/p/${companySlug}` : `${window.location.origin}/reservar`;
+  const [publicCompany,setPublicCompany]=useState<PublicCompany|null>(null);
+  const [publicAppointments,setPublicAppointments]=useState<{starts_at:string;ends_at:string}[]>([]);
+  const [publicDate,setPublicDate]=useState(()=>new Date(Date.now()+86400000).toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}));
   const reduced = useReducedMotion();
   const notify = (x: string) => {
     setToast(x);
@@ -136,9 +144,25 @@ function App() {
   useEffect(() => {
     if (authenticated) load();
   }, []);
+  useEffect(()=>{
+    if(!authenticated||companySlug)return;
+    api<{company:{name:string;slug:string}}>('/auth/me').then(data=>{localStorage.setItem('agendapro_slug',data.company.slug);setCompanySlug(data.company.slug)}).catch(()=>{});
+  },[authenticated,companySlug]);
+  useEffect(()=>{
+    if(!publicMode)return;
+    let active=true;
+    api<PublicCompany>(`/public/companies/${publicSlug}`).then(data=>{if(active)setPublicCompany(data)}).catch(e=>notify(e instanceof Error?e.message:'Página da empresa não encontrada'));
+    return ()=>{active=false};
+  },[publicMode,publicSlug]);
+  useEffect(()=>{
+    if(!publicMode || !publicSlug)return;
+    api<{starts_at:string;ends_at:string}[]>(`/public/companies/${publicSlug}/appointments?day=${publicDate}`).then(setPublicAppointments).catch(()=>setPublicAppointments([]));
+  },[publicMode,publicSlug,publicDate]);
   const signOut = () => {
     localStorage.removeItem("agendapro_session");
     localStorage.removeItem("agendapro_company");
+    localStorage.removeItem("agendapro_slug");
+    setCompanySlug("");
     go("login");
     setServices([]);
     setAppointments([]);
@@ -153,6 +177,8 @@ function App() {
           appointments={appointments}
           services={services}
           go={go}
+          publicUrl={publicUrl}
+          notify={notify}
         />
       ) : view === "agenda" ? (
         <Agenda appointments={appointments} reload={load} notify={notify} />
@@ -167,14 +193,9 @@ function App() {
       ) : view === "login" ? (
         <Login go={go} notify={notify} />
       ) : (
-        <Public
-          services={services}
-          appointments={appointments}
-          reload={load}
-          notify={notify}
-        />
+        <Public company={publicMode?publicCompany:{id:0,name:companyName,slug:companySlug,services,availability}} appointments={publicMode?publicAppointments:appointments} date={publicDate} setDate={setPublicDate} setAppointments={setPublicAppointments} notify={notify} />
       ),
-    [view, services, appointments, availability, insights],
+    [view, services, appointments, availability, insights, publicCompany, publicAppointments, publicDate, publicMode, companySlug],
   );
   return (
     <main className="app">
@@ -211,7 +232,7 @@ function App() {
               <span>Entrar</span>
             </button>
           )}
-          <button className="public" onClick={() => go("public")}>
+          <button className="public" onClick={() => publicMode?undefined:go("public")}>
             Ver página pública ↗
           </button>
           <div className="profile">
@@ -241,7 +262,7 @@ function App() {
                       : nav.find((x) => x.id === view)?.label}
             </h1>
           </div>
-          {authenticated && !["public", "plans", "login"].includes(view) && (
+          {authenticated && !publicMode && !["public", "plans", "login"].includes(view) && (
             <button className="primary" onClick={() => setModal(true)}>
               <Plus size={18} /> Novo agendamento
             </button>
@@ -289,10 +310,14 @@ function Dashboard({
   appointments,
   services,
   go,
+  publicUrl,
+  notify,
 }: {
   appointments: Appointment[];
   services: Service[];
   go: (x: View) => void;
+  publicUrl:string;
+  notify:(x:string)=>void;
 }) {
   const today = appointments.filter(
     (a) => localDay(a.starts_at) === "23" && a.status !== "canceled",
@@ -347,9 +372,8 @@ function Dashboard({
           <span />
         </div>
         <p>Cadastre seus serviços e compartilhe o seu link.</p>
-        <button className="outline" onClick={() => go("public")}>
-          Abrir página pública
-        </button>
+        <button className="outline" onClick={() => {navigator.clipboard.writeText(publicUrl).then(()=>notify("Link da sua empresa copiado ✦"))}}>Copiar link público</button>
+        <button className="outline" onClick={() => window.open(publicUrl,"_blank","noopener,noreferrer")}>Abrir página pública ↗</button>
       </section>
       <section className="panel services-mini">
         <div className="head">
@@ -807,7 +831,7 @@ function Login({
     e.preventDefault();
     setBusy(true);
     try {
-      const data = await api<{ token: string; company: { name: string } }>(
+      const data = await api<{ token: string; company: { name: string; slug:string } }>(
         `/auth/${mode === "login" ? "login" : "register"}`,
         {
           method: "POST",
@@ -820,6 +844,7 @@ function Login({
       );
       localStorage.setItem("agendapro_session", data.token);
       localStorage.setItem("agendapro_company", data.company.name);
+      localStorage.setItem("agendapro_slug", data.company.slug);
       notify(
         mode === "login"
           ? "Sessão iniciada ✦"
@@ -936,116 +961,23 @@ function Login({
     </div>
   );
 }
-function Public({
-  services,
-  appointments,
-  reload,
-  notify,
-}: {
-  services: Service[];
-  appointments: Appointment[];
-  reload: () => void;
-  notify: (x: string) => void;
-}) {
-  const [selected, setSelected] = useState(
-      services.find((s) => s.active)?.id || 0,
-    ),
-    [time, setTime] = useState(""),
-    [name, setName] = useState(""),
-    [contact, setContact] = useState("");
-  const booked = (x: string) =>
-    appointments.some(
-      (a) =>
-        localDay(a.starts_at) === "25" &&
-        localTime(a.starts_at) === x &&
-        a.status !== "canceled",
-    );
-  const submit = async () => {
-    try {
-      await api("/appointments", {
-        method: "POST",
-        body: JSON.stringify({
-          client_name: name,
-          client_contact: contact,
-          service_id: selected,
-          starts_at: "2026-11-25T" + time + ":00-03:00",
-        }),
-      });
-      reload();
-      notify("Reserva confirmada ✦");
-      setName("");
-      setContact("");
-      setTime("");
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Erro");
-    }
-  };
-  return (
-    <div className="public-page">
-      <section className="public-profile">
-        <b>A</b>
-        <p className="eyebrow">AGENDA ONLINE</p>
-        <h2>Ana Rosa</h2>
-        <p>Beleza, cor e coragem para você se sentir do seu jeito.</p>
-      </section>
-      <section className="booking-form">
-        <Step n="01" title="Escolha um serviço">
-          <div className="choices">
-            {services
-              .filter((s) => s.active)
-              .map((s) => (
-                <button
-                  className={s.id === selected ? "selected" : ""}
-                  onClick={() => setSelected(s.id)}
-                  key={s.id}
-                >
-                  <b>{s.name}</b>
-                  <small>
-                    {s.duration_minutes} min · R$ {Number(s.price).toFixed(0)}
-                  </small>
-                </button>
-              ))}
-          </div>
-        </Step>
-        <Step n="02" title="Escolha o horário">
-          <p className="date">Quarta, 25 de novembro</p>
-          <div className="time-grid">
-            {slots.map((t) => (
-              <button
-                disabled={booked(t)}
-                className={time === t ? "selected" : ""}
-                key={t}
-                onClick={() => setTime(t)}
-              >
-                {booked(t) ? "ocupado" : t}
-              </button>
-            ))}
-          </div>
-        </Step>
-        <Step n="03" title="Seus dados">
-          <label>
-            Como podemos te chamar?
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Seu nome"
-            />
-          </label>
-          <label>
-            WhatsApp ou e-mail
-            <input
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              placeholder="Seu melhor contato"
-            />
-          </label>
-          <button className="primary wide" onClick={submit}>
-            Confirmar agendamento <Heart size={17} />
-          </button>
-        </Step>
-      </section>
-    </div>
-  );
+function Public({company,appointments,date,setDate,setAppointments,notify}:{company:PublicCompany|null;appointments:{starts_at:string;ends_at:string}[];date:string;setDate:(date:string)=>void;setAppointments:(appointments:{starts_at:string;ends_at:string}[])=>void;notify:(x:string)=>void}) {
+  const [selected,setSelected]=useState(0),[time,setTime]=useState(""),[name,setName]=useState(""),[contact,setContact]=useState("");
+  const services=company?.services||[];
+  useEffect(()=>{if(!services.some(s=>s.id===selected))setSelected(services[0]?.id||0)},[company?.id,services,selected]);
+  const service=services.find(s=>s.id===selected);
+  const hours=company?.availability.find(a=>a.weekday===new Date(`${date}T12:00:00`).getDay());
+  const openSlots=useMemo(()=>{
+    if(!hours?.enabled||!service)return [];
+    const [sh,sm]=hours.start_time.slice(0,5).split(':').map(Number),[eh,em]=hours.end_time.slice(0,5).split(':').map(Number);let minute=sh*60+sm;const end=eh*60+em;const slots:string[]=[];const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
+    while(minute+service.duration_minutes<=end){const hh=String(Math.floor(minute/60)).padStart(2,'0'),mm=String(minute%60).padStart(2,'0'),label=`${hh}:${mm}`,instant=new Date(`${date}T${label}:00-03:00`);if((date!==today||instant>new Date())&&!appointments.some(a=>new Date(a.starts_at)<new Date(instant.getTime()+service.duration_minutes*60000)&&new Date(a.ends_at)>instant))slots.push(label);minute+=30;}return slots;
+  },[hours,service,date,appointments]);
+  const submit=async()=>{try{if(!company||!name.trim()||!contact.trim()||!selected||!time){notify('Preencha seus dados e escolha um horário.');return}await api('/appointments',{method:'POST',body:JSON.stringify({client_name:name.trim(),client_contact:contact.trim(),service_id:selected,starts_at:`${date}T${time}:00-03:00`})});if(company.slug){const updated=await api<{starts_at:string;ends_at:string}[]>(`/public/companies/${company.slug}/appointments?day=${date}`);setAppointments(updated)}notify('Reserva confirmada ✦');setName('');setContact('');setTime('')}catch(e){notify(e instanceof Error?e.message:'Erro')}};
+  return <div className="public-page"><section className="public-profile"><b>{company?.name?.[0]?.toUpperCase()||'✦'}</b><p className="eyebrow">AGENDA ONLINE</p><h2>{company?.name||'Carregando agenda…'}</h2><p>Escolha um serviço e encontre o melhor horário para você.</p></section><section className="booking-form">{!company?<p>Carregando página da empresa…</p>:<>
+    <Step n="01" title="Escolha um serviço"><div className="choices">{services.map(s=><button className={s.id===selected?'selected':''} onClick={()=>{setSelected(s.id);setTime('')}} key={s.id}><b>{s.name}</b><small>{s.duration_minutes} min · R$ {Number(s.price).toFixed(2).replace('.',',')}</small></button>)}{services.length===0&&<p>Esta empresa ainda não cadastrou serviços.</p>}</div></Step>
+    <Step n="02" title="Escolha o horário"><label>Data do agendamento<input type="date" min={new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'})} value={date} onChange={e=>{setDate(e.target.value);setTime('')}} /></label><p className="date">{hours?.enabled?`Atendimento das ${hours.start_time.slice(0,5)} às ${hours.end_time.slice(0,5)}`:'A empresa não atende neste dia.'}</p><div className="time-grid">{openSlots.map(t=><button className={time===t?'selected':''} key={t} onClick={()=>setTime(t)}>{t}</button>)}{hours?.enabled&&openSlots.length===0&&<small>Sem horários livres nessa data.</small>}</div></Step>
+    <Step n="03" title="Seus dados"><label>Como podemos te chamar?<input value={name} onChange={e=>setName(e.target.value)} placeholder="Seu nome" required /></label><label>WhatsApp ou e-mail<input value={contact} onChange={e=>setContact(e.target.value)} placeholder="Seu melhor contato" required /></label><button className="primary wide" onClick={submit} disabled={!time||!name.trim()||!contact.trim()}>Confirmar agendamento <Heart size={17}/></button></Step>
+  </>}</section></div>;
 }
 function Step({
   n,

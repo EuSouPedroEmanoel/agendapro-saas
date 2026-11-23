@@ -41,7 +41,7 @@ const createSession = async (account) => {
   await pool.query("insert into auth_sessions(token,company_id) values($1,$2) on conflict (token) do update set company_id=excluded.company_id", [token, account.company_id]);
   return {
     token,
-    company: { id: account.company_id, name: account.company_name },
+    company: { id: account.company_id, name: account.company_name, slug: account.company_slug, publicUrl: `/p/${account.company_slug}` },
   };
 };
 const sessionFor = async req => { const token=req.header("x-session"); const memory=sessions.get(token); if(memory)return memory; if(!token)return undefined; const row=(await pool.query("select s.company_id,c.name from auth_sessions s join companies c on c.id=s.company_id where s.token=$1",[token])).rows[0]; if(!row)return undefined; const session={companyId:row.company_id,name:row.name}; sessions.set(token,session); return session };
@@ -64,6 +64,24 @@ app.get("/api/health", async (_, res) => {
     res.status(503).json({ ok: false, error: "Banco indisponível" });
   }
 });
+const makeSlug = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48) || 'empresa';
+app.get('/api/public/companies/:slug', async (req,res) => {
+  const company=(await pool.query('select id,name,slug from companies where slug=$1',[req.params.slug])).rows[0];
+  if(!company)return res.status(404).json({error:'Empresa não encontrada.'});
+  const [services,availability]=await Promise.all([
+    pool.query('select id,name,duration_minutes,price,active from services where company_id=$1 and active=true order by id',[company.id]),
+    pool.query('select weekday,enabled,start_time,end_time from availability where company_id=$1 order by weekday',[company.id]),
+  ]);
+  res.json({...company,services:services.rows,availability:availability.rows});
+});
+app.get('/api/public/companies/:slug/appointments', async (req,res) => {
+  const company=(await pool.query('select id from companies where slug=$1',[req.params.slug])).rows[0];
+  if(!company)return res.status(404).json({error:'Empresa não encontrada.'});
+  const day=req.query.day;
+  if(!day || !/^\d{4}-\d{2}-\d{2}$/.test(day))return res.status(400).json({error:'Informe uma data válida.'});
+  const q=await pool.query("select starts_at,ends_at from appointments where company_id=$1 and status in ('confirmed','completed') and (starts_at at time zone 'America/Sao_Paulo')::date=$2::date",[company.id,day]);
+  res.json(q.rows);
+});
 app.post("/api/auth/register", async (req, res) => {
   const { companyName, name, email, password } = req.body;
   if (!companyName || !name || !email || !password)
@@ -79,8 +97,8 @@ app.post("/api/auth/register", async (req, res) => {
     await client.query("begin");
     const company = (
       await client.query(
-        "insert into companies(name) values($1) returning id,name",
-        [companyName.trim()],
+        "insert into companies(name,slug) values($1,$2) returning id,name,slug",
+        [companyName.trim(), `${makeSlug(companyName)}-${randomBytes(3).toString('hex')}`],
       )
     ).rows[0];
     const passwordHash = await hashPassword(password);
@@ -95,9 +113,7 @@ app.post("/api/auth/register", async (req, res) => {
       [company.id],
     );
     await client.query("commit");
-    res
-      .status(201)
-      .json(await createSession({ ...account, company_name: company.name }));
+    res.status(201).json(await createSession({ ...account, company_name: company.name, company_slug: company.slug }));
   } catch (error) {
     await client.query("rollback");
     if (error.code === "23505")
@@ -113,7 +129,7 @@ app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   const account = (
     await pool.query(
-      "select u.*,c.name company_name from company_users u join companies c on c.id=u.company_id where u.email=lower($1)",
+      "select u.*,c.name company_name,c.slug company_slug from company_users u join companies c on c.id=u.company_id where u.email=lower($1)",
       [email || ""],
     )
   ).rows[0];
@@ -123,6 +139,11 @@ app.post("/api/auth/login", async (req, res) => {
   )
     return res.status(401).json({ error: "E-mail ou senha inválidos." });
   res.json(await createSession(account));
+});
+app.get("/api/auth/me", requireCompany, async (req,res) => {
+  const company=(await pool.query('select name,slug from companies where id=$1',[req.companyId])).rows[0];
+  if(!company)return res.status(404).json({error:'Empresa não encontrada.'});
+  res.json({company});
 });
 
 app.get("/api/services", async (req, res) =>
@@ -166,21 +187,22 @@ app.get("/api/appointments", requireCompany, async (req, res) =>
 );
 app.post("/api/appointments", async (req, res) => {
   const { client_name, client_contact, service_id, starts_at } = req.body;
-  const companyId = await optionalCompany(req);
   if (!client_name || !client_contact || !service_id || !starts_at)
     return res.status(400).json({ error: "Preencha os dados da reserva" });
   const service = (
     await pool.query(
-      "select * from services where id=$1 and company_id=$2 and active=true",
-      [service_id, companyId],
+      "select s.*,c.id company_id from services s join companies c on c.id=s.company_id where s.id=$1 and s.active=true",
+      [service_id],
     )
   ).rows[0];
   if (!service) return res.status(400).json({ error: "Serviço indisponível" });
   const start = new Date(starts_at);
+  if(Number.isNaN(start.getTime()) || start <= new Date())return res.status(400).json({error:"Escolha um horário futuro válido."});
   const end = new Date(start.getTime() + service.duration_minutes * 60000);
+  const companyId=service.company_id;
   const conflict = (
     await pool.query(
-      "select id from appointments where company_id=$1 and status in ('confirmed','completed') and starts_at < $3 and ends_at > $2",
+    "select id from appointments where company_id=$1 and status in ('confirmed','completed') and starts_at < $3 and ends_at > $2",
       [companyId, start, end],
     )
   ).rowCount;
@@ -188,6 +210,11 @@ app.post("/api/appointments", async (req, res) => {
     return res
       .status(409)
       .json({ error: "Este horário acabou de ser reservado" });
+  const weekday=new Date(start.toLocaleString('en-US',{timeZone:'America/Sao_Paulo'})).getDay();
+  const hours=(await pool.query('select enabled,start_time,end_time from availability where company_id=$1 and weekday=$2',[companyId,weekday])).rows[0];
+  const startHm=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(start);
+  const endHm=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(end);
+  if(!hours?.enabled || startHm<hours.start_time.slice(0,5) || endHm>hours.end_time.slice(0,5))return res.status(400).json({error:'Esse horário está fora da disponibilidade da empresa.'});
   const q = await pool.query(
     "insert into appointments(company_id,client_name,client_contact,service_id,starts_at,ends_at) values($1,$2,$3,$4,$5,$6) returning *",
     [companyId, client_name, client_contact, service_id, start, end],

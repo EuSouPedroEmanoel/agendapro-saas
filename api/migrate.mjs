@@ -7,7 +7,10 @@ const { Client } = pg;
 const client = new Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
 await client.query(`
-CREATE TABLE IF NOT EXISTS companies (id SERIAL PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS companies (id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS slug TEXT;
+UPDATE companies SET slug=trim(both '-' from regexp_replace(lower(name),'[^a-z0-9]+','-','g')) || '-' || id WHERE slug IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS companies_slug_unique_idx ON companies(slug);
 CREATE TABLE IF NOT EXISTS company_users (id SERIAL PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS auth_sessions (token TEXT PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS services (id SERIAL PRIMARY KEY, name TEXT NOT NULL, duration_minutes INTEGER NOT NULL CHECK(duration_minutes > 0), price NUMERIC(10,2) NOT NULL CHECK(price >= 0), active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
