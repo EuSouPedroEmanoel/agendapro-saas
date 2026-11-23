@@ -439,6 +439,10 @@ function Agenda({
   const list = appointments.filter(
     (a) => localDay(a.starts_at) === day && a.status !== "canceled",
   );
+  const timelineTimes = [...new Set([...slots, ...list.map((a) => localTime(a.starts_at))])]
+    .filter((time) => list.some((a) => localTime(a.starts_at) === time) ||
+      !list.some((a) => localTime(a.starts_at) <= time && localTime(a.ends_at) > time))
+    .sort((a, b) => a.localeCompare(b));
   const update = async (id: number, status: string) => {
     await api(`/appointments/${id}`, {
       method: "PATCH",
@@ -475,7 +479,7 @@ function Agenda({
           </div>
           <i>{list.length} reservas</i>
         </div>
-        {slots.map((t) => {
+        {timelineTimes.map((t) => {
           const a = list.find((x) => localTime(x.starts_at) === t);
           return (
             <div className="slot" key={t}>
@@ -970,7 +974,7 @@ function Public({company,appointments,date,setDate,setAppointments,notify}:{comp
   const openSlots=useMemo(()=>{
     if(!hours?.enabled||!service)return [];
     const [sh,sm]=hours.start_time.slice(0,5).split(':').map(Number),[eh,em]=hours.end_time.slice(0,5).split(':').map(Number);let minute=sh*60+sm;const end=eh*60+em;const slots:string[]=[];const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
-    while(minute+service.duration_minutes<=end){const hh=String(Math.floor(minute/60)).padStart(2,'0'),mm=String(minute%60).padStart(2,'0'),label=`${hh}:${mm}`,instant=new Date(`${date}T${label}:00-03:00`);if((date!==today||instant>new Date())&&!appointments.some(a=>new Date(a.starts_at)<new Date(instant.getTime()+service.duration_minutes*60000)&&new Date(a.ends_at)>instant))slots.push(label);minute+=30;}return slots;
+    while(minute+service.duration_minutes<=end){const hh=String(Math.floor(minute/60)).padStart(2,'0'),mm=String(minute%60).padStart(2,'0'),label=`${hh}:${mm}`,instant=new Date(`${date}T${label}:00-03:00`);if((date!==today||instant>new Date())&&!appointments.some(a=>new Date(a.starts_at)<new Date(instant.getTime()+service.duration_minutes*60000)&&new Date(a.ends_at)>instant))slots.push(label);minute+=service.duration_minutes;}return slots;
   },[hours,service,date,appointments]);
   const submit=async()=>{try{if(!company||!name.trim()||!contact.trim()||!selected||!time){notify('Preencha seus dados e escolha um horário.');return}await api('/appointments',{method:'POST',body:JSON.stringify({client_name:name.trim(),client_contact:contact.trim(),service_id:selected,starts_at:`${date}T${time}:00-03:00`})});if(company.slug){const updated=await api<{starts_at:string;ends_at:string}[]>(`/public/companies/${company.slug}/appointments?day=${date}`);setAppointments(updated)}notify('Reserva confirmada ✦');setName('');setContact('');setTime('')}catch(e){notify(e instanceof Error?e.message:'Erro')}};
   return <div className="public-page"><section className="public-profile"><b>{company?.name?.[0]?.toUpperCase()||'✦'}</b><p className="eyebrow">AGENDA ONLINE</p><h2>{company?.name||'Carregando agenda…'}</h2><p>Escolha um serviço e encontre o melhor horário para você.</p></section><section className="booking-form">{!company?<p>Carregando página da empresa…</p>:<>
