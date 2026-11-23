@@ -9,6 +9,7 @@ SaaS de agendamento online para profissionais autônomos e pequenos negócios. O
 ## Funcionalidades demonstradas
 
 - Cadastro e ativação de serviços com duração e preço.
+- Cadastro de empresas com conta própria e dados separados por empresa.
 - Configuração de disponibilidade semanal.
 - Agenda com reservas, conclusão e cancelamento.
 - Página pública de reserva sem login do cliente.
