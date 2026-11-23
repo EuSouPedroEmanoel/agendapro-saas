@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agendapro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: agendapro
+      POSTGRES_USER: agendapro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
+    ports:
+      - "5433:5432"
+    volumes:
+      - agendapro_postgres:/var/lib/postgresql/data
+volumes:
+  agendapro_postgres:

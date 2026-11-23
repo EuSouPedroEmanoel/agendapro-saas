@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+docs/rendered_classroom/
+docs/rendered_classroom_final/page-*.png
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

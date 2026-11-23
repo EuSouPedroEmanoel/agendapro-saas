@@ -1,0 +1,42 @@
+/* A reserva pública é uma experiência isolada: clientes nunca recebem links
+   para o painel, planos ou contrato. */
+.app:has(.public-page) aside,
+.app:has(.public-page) .content > header { display: none; }
+
+.app:has(.public-page) .content {
+  width: 100%;
+  min-height: 100vh;
+  padding: 0;
+}
+
+.public-page {
+  min-height: 100vh;
+  max-width: none;
+  margin: 0;
+  padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 6vw, 7rem);
+}
+
+.public-profile .eyebrow::after {
+  content: ' \00b7  ÁREA DO CLIENTE';
+  color: var(--ink-soft);
+}
+
+/* O selo reforça que este conteúdo pertence exclusivamente à conta da empresa. */
+.contract::before {
+  content: 'ACESSO ADMINISTRATIVO — EMPRESA';
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 1rem;
+  padding: .38rem .68rem;
+  border-radius: 999px;
+  background: #efe7ff;
+  color: #5c2b97;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .09em;
+}
+
+@media (max-width: 700px) {
+  .public-page { padding: 1.25rem 1rem 3rem; }
+}
