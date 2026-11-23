@@ -1,6 +1,34 @@
 {
-  "name":"agendapro-local","private":true,"type":"module","version":"0.1.0",
-  "scripts":{"dev":"concurrently \"node api/server.mjs\" \"vite\"","web":"vite","api":"node api/server.mjs","migrate":"node api/migrate.mjs","build":"tsc -b && vite build"},
-  "dependencies":{"@vitejs/plugin-react":"latest","vite":"latest","typescript":"latest","react":"latest","react-dom":"latest","framer-motion":"latest","lucide-react":"latest","express":"latest","cors":"latest","dotenv":"latest","pg":"latest"},
-  "devDependencies":{"@types/react":"latest","@types/react-dom":"latest","@types/express":"latest","@types/cors":"latest","concurrently":"latest"}
+  "name": "agendapro-local",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently \"node api/server.mjs\" \"vite\"",
+    "web": "vite",
+    "api": "node api/server.mjs",
+    "migrate": "node api/migrate.mjs",
+    "build": "tsc -b && vite build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "framer-motion": "latest",
+    "lucide-react": "latest",
+    "pg": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router-dom": "^7.18.6",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "concurrently": "latest"
+  }
 }
