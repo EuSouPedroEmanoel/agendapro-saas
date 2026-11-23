@@ -1,0 +1,60 @@
+.availability {
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(57, 34, 77, .92), rgba(38, 23, 53, .92));
+}
+
+.availability > div {
+  grid-template-columns: 44px minmax(120px, 1fr) auto 28px auto;
+  gap: 12px;
+  min-height: 76px;
+  padding: 14px 18px;
+}
+
+.availability > div > strong {
+  color: #f7effc;
+  font-size: .93rem;
+}
+
+.availability input[type="time"] {
+  width: 112px;
+  height: 42px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid rgba(224, 190, 255, .26);
+  border-radius: 11px;
+  background: rgba(18, 9, 29, .72);
+  color: #fbf6ff;
+  padding: 0 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  color-scheme: dark;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+}
+
+.availability input[type="time"]:hover {
+  border-color: rgba(220, 166, 255, .7);
+  background: rgba(35, 17, 51, .96);
+}
+
+.availability input[type="time"]:focus {
+  outline: none;
+  border-color: #d89cff;
+  box-shadow: 0 0 0 3px rgba(203, 126, 255, .2);
+}
+
+.availability small {
+  color: #be9ed4;
+  font-size: .78rem;
+  text-align: center;
+}
+
+@media (max-width: 620px) {
+  .availability > div {
+    grid-template-columns: 40px 1fr 1fr;
+    gap: 8px;
+    padding: 14px;
+  }
+  .availability > div > strong { grid-column: span 2; }
+  .availability input[type="time"] { width: 100%; }
+  .availability > div > small { display: none; }
+}

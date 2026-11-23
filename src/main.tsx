@@ -20,6 +20,7 @@ import {
 import "./styles.css";
 import "./login.css";
 import "./access.css";
+import "./availability.css";
 type Service = {
   id: number;
   name: string;
