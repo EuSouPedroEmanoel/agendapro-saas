@@ -5,9 +5,11 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'docs' / 'AgendaPro_Entrega_Classroom.docx'
+REPOSITORY_URL = 'https://github.com/EuSouPedroEmanoel/agendapro-saas'
 PURPLE = '5B2A86'; INK = '17131B'; MUTED = '5E5666'; PALE = 'F7F1FC'; WHITE = 'FFFFFF'; GRID = 'D9D9D9'
 
 def shade(cell, color):
@@ -43,6 +45,16 @@ def paragraph(doc, text, lead=None):
         p.add_run(lead).bold = True; p.add_run(text[len(lead):])
     else: p.add_run(text)
 
+def hyperlink(paragraph, text, url):
+    relationship_id = paragraph.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    link = OxmlElement('w:hyperlink'); link.set(qn('r:id'), relationship_id)
+    run = OxmlElement('w:r'); properties = OxmlElement('w:rPr')
+    color = OxmlElement('w:color'); color.set(qn('w:val'), PURPLE); properties.append(color)
+    underline = OxmlElement('w:u'); underline.set(qn('w:val'), 'single'); properties.append(underline)
+    run.append(properties)
+    value = OxmlElement('w:t'); value.text = text; run.append(value)
+    link.append(run); paragraph._p.append(link)
+
 def bullet(doc, text):
     p = doc.add_paragraph(style='List Bullet'); p.paragraph_format.space_after = Pt(3); p.add_run(text)
 
@@ -67,6 +79,9 @@ table(doc, ['Informação', 'Detalhe'], [
     ['Data', '23 de novembro de 2026'],
     ['Formato', 'MVP local para demonstração']
 ])
+p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER; p.paragraph_format.space_before = Pt(8)
+p.add_run('Repositório público: ')
+hyperlink(p, 'github.com/EuSouPedroEmanoel/agendapro-saas', REPOSITORY_URL)
 doc.add_page_break()
 
 doc.add_heading('Problema e público alvo', 1)

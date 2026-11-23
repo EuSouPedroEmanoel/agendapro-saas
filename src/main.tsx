@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import JevAssistant from "./JevAssistant";
 import {
   CalendarDays,
   Check,
@@ -158,6 +159,12 @@ function App() {
     if(!publicMode || !publicSlug)return;
     api<{starts_at:string;ends_at:string}[]>(`/public/companies/${publicSlug}/appointments?day=${publicDate}`).then(setPublicAppointments).catch(()=>setPublicAppointments([]));
   },[publicMode,publicSlug,publicDate]);
+  const refreshClientDay=async(date:string)=>{
+    setPublicDate(date);
+    const slug=publicSlug||companySlug;
+    if(slug)setPublicAppointments(await api<{starts_at:string;ends_at:string}[]>(`/public/companies/${slug}/appointments?day=${date}`));
+    else await load();
+  };
   const signOut = () => {
     localStorage.removeItem("agendapro_session");
     localStorage.removeItem("agendapro_company");
@@ -303,6 +310,7 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      {view==="public" ? (publicMode&&!publicCompany?null:<JevAssistant mode="client" company={publicMode?publicCompany:{name:companyName,slug:companySlug}} services={publicMode?publicCompany?.services||[]:services} availability={publicMode?publicCompany?.availability||[]:availability} appointments={[]} onRefresh={load} onBooked={refreshClientDay}/>) : authenticated&&view!=="login" ? <JevAssistant mode="company" company={{name:companyName,slug:companySlug}} services={services} availability={availability} appointments={appointments} onRefresh={load}/> : null}
     </main>
   );
 }

@@ -4,6 +4,7 @@
 .app:has(.public-page) .content > header { display: none; }
 
 .app:has(.public-page) .content {
+  margin-left: 0;
   width: 100%;
   min-height: 100vh;
   padding: 0;
@@ -11,8 +12,9 @@
 
 .public-page {
   min-height: 100vh;
-  max-width: none;
-  margin: 0;
+  width: min(100%, 1440px);
+  max-width: 1440px;
+  margin: 0 auto;
   padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 6vw, 7rem);
 }
 
@@ -38,5 +40,5 @@
 }
 
 @media (max-width: 700px) {
-  .public-page { padding: 1.25rem 1rem 3rem; }
+  .public-page { width: 100%; padding: 1.25rem 1rem 3rem; }
 }
